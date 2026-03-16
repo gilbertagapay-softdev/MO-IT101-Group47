@@ -375,8 +375,7 @@ public class MyPH {
             double hours1 = computeCutoffHours(attendance, empNum, month, startDays[idx1], endDays[idx1]);
             double hours2 = computeCutoffHours(attendance, empNum, month, startDays[idx2], endDays[idx2]);
 
-            // Skip this month if the employee has no attendance in both cutoffs
-            if (hours1 == 0 && hours2 == 0) continue;
+
 
             double gross1 = hours1 * hourlyRate;
             double gross2 = hours2 * hourlyRate;
