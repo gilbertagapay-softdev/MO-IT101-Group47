@@ -7,41 +7,36 @@ public class MyPH {
 
     // =========================================================
     // PROGRAM CONSTANTS
-    // These constants make the payroll rules easier to read.
     // =========================================================
+    public static final int WORK_START = 480;   // 8:00 AM
+    public static final int GRACE_LIMIT = 485;  // 8:05 AM
+    public static final int WORK_END = 1020;    // 5:00 PM
 
-    // Work schedule limits
-    public static final int WORK_START = 480;   // 8:00 AM = 480 minutes
-    public static final int GRACE_LIMIT = 485;  // 8:05 AM = 485 minutes
-    public static final int WORK_END = 1020;    // 5:00 PM = 1020 minutes
+    public static final String EMPLOYEE_FILE = "EmployeeDetails.csv";
+    public static final String ATTENDANCE_FILE = "Attendance.csv";
 
     // =========================================================
     // CLEAN FIELD
-    // Removes quotes, hidden characters, tabs, extra spaces,
-    // and other unwanted characters from CSV values.
-    // This helps avoid repeated replace() logic in many places.
+    // Removes quotes, BOM, hidden spaces, tabs, and trims text.
     // =========================================================
     public static String cleanField(String s) {
         if (s == null) return "";
         return s.replace("\"", "")
-                .replace("\uFEFF", "")  // BOM
-                .replace("\u200B", "")  // zero-width space
-                .replace("\u00A0", "")  // non-breaking space
+                .replace("\uFEFF", "")
+                .replace("\u200B", "")
+                .replace("\u00A0", "")
                 .replace("\r", "")
                 .replace("\t", "")
                 .trim();
     }
 
     // =========================================================
-    // CSV PARSER
-    // Reads one CSV line correctly even if a field contains commas
-    // inside quotation marks.
-    // Example:
-    // "Valero Street, Makati City"
+    // PARSE CSV LINE
+    // Handles commas inside quoted fields.
     // =========================================================
     public static String[] parseCSVLine(String line) {
         ArrayList<String> fields = new ArrayList<>();
-        StringBuilder sb = new StringBuilder();
+        StringBuilder current = new StringBuilder();
         boolean inQuotes = false;
 
         for (int i = 0; i < line.length(); i++) {
@@ -50,82 +45,23 @@ public class MyPH {
             if (c == '"') {
                 inQuotes = !inQuotes;
             } else if (c == ',' && !inQuotes) {
-                fields.add(sb.toString().trim());
-                sb.setLength(0);
+                fields.add(current.toString().trim());
+                current.setLength(0);
             } else {
-                sb.append(c);
+                current.append(c);
             }
         }
 
-        fields.add(sb.toString().trim());
+        fields.add(current.toString().trim());
         return fields.toArray(new String[0]);
     }
 
     // =========================================================
-    // FIND EMPLOYEE
-    // Searches the employee list using employee number.
-    // Returns the matching employee row if found.
-    // =========================================================
-    public static String[] findEmployee(ArrayList<String[]> employees, String empNum) {
-        String cleanEmpNum = cleanField(empNum);
-
-        for (int i = 1; i < employees.size(); i++) {
-            String[] emp = employees.get(i);
-            String id = cleanField(emp[0]);
-
-            if (id.equals(cleanEmpNum)) {
-                return emp;
-            }
-        }
-        return null;
-    }
-
-    // =========================================================
-    // TIME CONVERSION
-    // Converts a time string into total minutes.
-    // Examples:
-    // 8:30 AM -> 510
-    // 5:00 PM -> 1020
-    // =========================================================
-    public static int convertToMinutes(String time) {
-        if (time == null) return 0;
-
-        time = cleanField(time);
-        if (time.isEmpty()) return 0;
-
-        // Handles time values without AM/PM if ever present
-        if (!time.contains("AM") && !time.contains("PM")) {
-            String[] hm = time.split(":");
-            if (hm.length < 2) return 0;
-            return Integer.parseInt(hm[0].trim()) * 60 + Integer.parseInt(hm[1].trim());
-        }
-
-        String[] parts = time.split(" ");
-        if (parts.length < 2) return 0;
-
-        String[] hm = parts[0].split(":");
-        if (hm.length < 2) return 0;
-
-        int hour = Integer.parseInt(hm[0]);
-        int minute = Integer.parseInt(hm[1]);
-        String ampm = parts[1];
-
-        if (ampm.equalsIgnoreCase("PM") && hour != 12) hour += 12;
-        if (ampm.equalsIgnoreCase("AM") && hour == 12) hour = 0;
-
-        return hour * 60 + minute;
-    }
-
-    // =========================================================
     // SAFE PARSE DOUBLE
-    // Safely converts a CSV numeric field to double.
-    // Removes commas and quotes first.
-    // Example:
-    // "45,000" -> 45000
+    // Converts CSV numeric field safely.
     // =========================================================
     public static double safeParseDouble(String s) {
         try {
-            if (s == null) return 0;
             return Double.parseDouble(cleanField(s).replace(",", ""));
         } catch (Exception e) {
             return 0;
@@ -133,81 +69,158 @@ public class MyPH {
     }
 
     // =========================================================
-    // COMPUTE HOURS WORKED FOR ONE ATTENDANCE RECORD
+    // SAFE PARSE INT
+    // Converts menu input safely.
+    // =========================================================
+    public static int safeParseInt(String s) {
+        try {
+            return Integer.parseInt(cleanField(s));
+        } catch (Exception e) {
+            return -1;
+        }
+    }
+
+    // =========================================================
+    // FIND EMPLOYEE
+    // Searches employee list by employee number.
+    // =========================================================
+    public static String[] findEmployee(ArrayList<String[]> employees, String empNum) {
+        String target = cleanField(empNum);
+
+        for (int i = 1; i < employees.size(); i++) { // skip header
+            String[] emp = employees.get(i);
+            if (emp.length == 0) continue;
+
+            String currentEmpNum = cleanField(emp[0]);
+            if (currentEmpNum.equals(target)) {
+                return emp;
+            }
+        }
+        return null;
+    }
+
+    // =========================================================
+    // TIME TO MINUTES
+    // Converts time string to total minutes.
+    // Examples:
+    // 8:30 AM -> 510
+    // 5:00 PM -> 1020
+    // =========================================================
+    public static int convertToMinutes(String time) {
+        if (time == null) return -1;
+
+        time = cleanField(time);
+        if (time.isEmpty()) return -1;
+
+        try {
+            if (time.contains("AM") || time.contains("PM")) {
+                String[] parts = time.split(" ");
+                if (parts.length < 2) return -1;
+
+                String[] hm = parts[0].split(":");
+                if (hm.length < 2) return -1;
+
+                int hour = Integer.parseInt(hm[0].trim());
+                int minute = Integer.parseInt(hm[1].trim());
+                String ampm = parts[1].trim();
+
+                if (ampm.equalsIgnoreCase("PM") && hour != 12) hour += 12;
+                if (ampm.equalsIgnoreCase("AM") && hour == 12) hour = 0;
+
+                return hour * 60 + minute;
+            }
+
+            String[] hm = time.split(":");
+            if (hm.length < 2) return -1;
+
+            int hour = Integer.parseInt(hm[0].trim());
+            int minute = Integer.parseInt(hm[1].trim());
+
+            return hour * 60 + minute;
+
+        } catch (Exception e) {
+            return -1;
+        }
+    }
+
+    // =========================================================
+    // COMPUTE HOURS WORKED
     //
-    // Payroll rules followed:
+    // Rules followed:
     // 1. Count only from 8:00 AM to 5:00 PM
     // 2. Do not include extra hours beyond 5:00 PM
     // 3. If login is 8:05 AM or earlier, treat it as 8:00 AM
-    // 4. If logout is earlier than login after adjustments, return 0
+    // 4. Always deduct 1 hour lunch
     // =========================================================
     public static double computeHoursWorked(String logIn, String logOut) {
         int inMin = convertToMinutes(logIn);
         int outMin = convertToMinutes(logOut);
 
-        // Grace period rule:
-        // If employee logs in at 8:05 AM or earlier, do not mark as late.
-        // Treat login as exactly 8:00 AM.
+        if (inMin == -1 || outMin == -1) return 0;
+
+        // Grace period rule
         if (inMin <= GRACE_LIMIT) {
             inMin = WORK_START;
         }
 
-        // Only count time within official work hours.
+        // Count only within official work hours
         if (inMin < WORK_START) inMin = WORK_START;
         if (outMin > WORK_END) outMin = WORK_END;
 
-        // If invalid after adjustment, no worked hours
+        // Invalid interval
         if (outMin <= inMin) return 0;
 
-        // Compute total minutes inside official work schedule
         int workedMinutes = outMin - inMin;
 
-        // Deduct 1 hour lunch
+        // Always deduct 1 hour lunch
         workedMinutes -= 60;
 
-        // Safety check in case worked minutes becomes negative
         if (workedMinutes < 0) return 0;
 
         return workedMinutes / 60.0;
     }
 
     // =========================================================
-    // CHECK IF DATE IS INSIDE A CUTOFF PERIOD
-    // Example:
-    // date = 06/14/2024
-    // month = 6, startDay = 1, endDay = 15
-    // returns true
+    // CHECK IF DATE IS INSIDE CUTOFF
+    // Expected format: MM/DD/YYYY
     // =========================================================
     public static boolean isInCutoff(String date, int month, int startDay, int endDay) {
-        String[] parts = date.split("/");
-        if (parts.length < 3) return false;
+        try {
+            String[] parts = cleanField(date).split("/");
+            if (parts.length < 3) return false;
 
-        int m = Integer.parseInt(parts[0].trim());
-        int d = Integer.parseInt(parts[1].trim());
+            int m = Integer.parseInt(parts[0].trim());
+            int d = Integer.parseInt(parts[1].trim());
 
-        return m == month && d >= startDay && d <= endDay;
+            return m == month && d >= startDay && d <= endDay;
+        } catch (Exception e) {
+            return false;
+        }
     }
 
     // =========================================================
-    // COMPUTE TOTAL HOURS FOR ONE EMPLOYEE WITHIN ONE CUTOFF
-    // Filters attendance records by:
-    // 1. employee number
-    // 2. cutoff month
-    // 3. cutoff day range
+    // COMPUTE TOTAL HOURS FOR ONE EMPLOYEE IN ONE CUTOFF
     // =========================================================
     public static double computeCutoffHours(ArrayList<String[]> attendance,
-                                            String empNum, int month,
-                                            int startDay, int endDay) {
-        double total = 0;
-        String cleanEmp = cleanField(empNum);
+                                            String empNum,
+                                            int month,
+                                            int startDay,
+                                            int endDay) {
+        double totalHours = 0;
+        String targetEmpNum = cleanField(empNum);
 
-        for (int i = 1; i < attendance.size(); i++) {
+        for (int i = 1; i < attendance.size(); i++) { // skip header
             String[] att = attendance.get(i);
 
+            // Expected columns:
+            // [0] employee number
+            // [3] date
+            // [4] log in
+            // [5] log out
             if (att.length < 6) continue;
 
-            String attEmp = cleanField(att[0]);
-            if (!attEmp.equals(cleanEmp)) continue;
+            String currentEmpNum = cleanField(att[0]);
+            if (!currentEmpNum.equals(targetEmpNum)) continue;
 
             String date = cleanField(att[3]);
             if (!isInCutoff(date, month, startDay, endDay)) continue;
@@ -217,16 +230,15 @@ public class MyPH {
 
             if (logIn.isEmpty() || logOut.isEmpty()) continue;
 
-            total += computeHoursWorked(logIn, logOut);
+            totalHours += computeHoursWorked(logIn, logOut);
         }
 
-        return total;
+        return totalHours;
     }
 
     // =========================================================
     // GOVERNMENT DEDUCTIONS
-    // These are computed using the COMBINED monthly gross salary
-    // from the 1st cutoff and 2nd cutoff.
+    // Based on combined monthly gross salary.
     // =========================================================
     public static double computeSSS(double monthlyGross) {
         if (monthlyGross < 4250)       return 180.00;
@@ -286,75 +298,78 @@ public class MyPH {
     }
 
     public static double computeWithholdingTax(double monthlyGross,
-                                               double sss, double philhealth, double pagibig) {
-        double taxable = monthlyGross - sss - philhealth - pagibig;
+                                               double sss,
+                                               double philhealth,
+                                               double pagibig) {
+        double taxableIncome = monthlyGross - sss - philhealth - pagibig;
 
-        if (taxable <= 20833)       return 0;
-        else if (taxable <= 33332)  return (taxable - 20833) * 0.20;
-        else if (taxable <= 66666)  return 2500 + (taxable - 33333) * 0.25;
-        else if (taxable <= 166666) return 10833 + (taxable - 66667) * 0.30;
-        else if (taxable <= 666666) return 40833.33 + (taxable - 166667) * 0.32;
-        else                        return 200833.33 + (taxable - 666667) * 0.35;
+        if (taxableIncome <= 20833)       return 0;
+        else if (taxableIncome <= 33332)  return (taxableIncome - 20833) * 0.20;
+        else if (taxableIncome <= 66666)  return 2500 + (taxableIncome - 33333) * 0.25;
+        else if (taxableIncome <= 166666) return 10833 + (taxableIncome - 66667) * 0.30;
+        else if (taxableIncome <= 666666) return 40833.33 + (taxableIncome - 166667) * 0.32;
+        else                              return 200833.33 + (taxableIncome - 666667) * 0.35;
     }
 
     // =========================================================
     // PRINT FIRST CUTOFF
-    // First cutoff shows:
-    // - Total Hours Worked
-    // - Gross Salary
-    // - Net Salary
-    // No deductions are applied here.
     // =========================================================
-    public static void printFirstCutoff(String monthName, int startDay, int endDay,
-                                        double hours, double gross, double net) {
-        System.out.println("\nCutoff Date: " + monthName + " " + startDay + " to " + monthName + " " + endDay);
-        System.out.println("  Total Hours Worked : " + hours);
-        System.out.println("  Gross Salary       : " + gross);
-        System.out.println("  Net Salary         : " + net);
+    public static void printFirstCutoff(String monthName,
+                                        int startDay,
+                                        int endDay,
+                                        double hours,
+                                        double gross,
+                                        double net) {
+        System.out.println("Cutoff Date: " + monthName + " " + startDay + " to " + monthName + " " + endDay);
+        System.out.println("Total Hours Worked: " + hours);
+        System.out.println("Gross Salary: " + gross);
+        System.out.println("Net Salary: " + net);
+        System.out.println();
     }
 
     // =========================================================
     // PRINT SECOND CUTOFF
-    // Second cutoff shows all monthly deductions.
-    // According to the instructions, the deductions are displayed
-    // in the second payout.
     // =========================================================
-    public static void printSecondCutoff(String monthName, int startDay, int endDay,
-                                         double hours, double gross,
-                                         double sss, double philhealth, double pagibig, double tax,
-                                         double totalDeductions, double net) {
-        System.out.println("\nCutoff Date: " + monthName + " " + startDay + " to " + monthName + " " + endDay);
-        System.out.println("  Total Hours Worked : " + hours);
-        System.out.println("  Gross Salary       : " + gross);
-        System.out.println("  SSS                : " + sss);
-        System.out.println("  PhilHealth         : " + philhealth);
-        System.out.println("  Pag-IBIG           : " + pagibig);
-        System.out.println("  Tax                : " + tax);
-        System.out.println("  Total Deductions   : " + totalDeductions);
-        System.out.println("  Net Salary         : " + net);
-        System.out.println("----------------------------------------");
+    public static void printSecondCutoff(String monthName,
+                                         int startDay,
+                                         int endDay,
+                                         double hours,
+                                         double gross,
+                                         double sss,
+                                         double philhealth,
+                                         double pagibig,
+                                         double tax,
+                                         double totalDeductions,
+                                         double net) {
+        System.out.println("Cutoff Date: " + monthName + " " + startDay + " to " + monthName + " " + endDay);
+        System.out.println("Total Hours Worked: " + hours);
+        System.out.println("Gross Salary: " + gross);
+        System.out.println("SSS: " + sss);
+        System.out.println("PhilHealth: " + philhealth);
+        System.out.println("Pag-IBIG: " + pagibig);
+        System.out.println("Tax: " + tax);
+        System.out.println("Total Deductions: " + totalDeductions);
+        System.out.println("Net Salary: " + net);
+        System.out.println();
     }
 
     // =========================================================
     // DISPLAY PAYROLL FOR ONE EMPLOYEE
-    // This processes all available payroll records from June to
-    // December and prints both cutoffs for each month.
-    //
-    // Important rule:
-    // Government deductions are computed only after combining
-    // the 1st and 2nd cutoff gross salary for the month.
+    // Shows all cutoffs from June to December.
     // =========================================================
     public static void displayPayroll(String[] emp, ArrayList<String[]> attendance) {
+
+        // Adjust indexes only if your CSV layout is different.
         String empNum = cleanField(emp[0]);
         String fullName = cleanField(emp[2]) + " " + cleanField(emp[1]);
         String birthday = cleanField(emp[3]);
         double hourlyRate = safeParseDouble(emp[18]);
 
-        System.out.println("\n========================================");
-        System.out.println("Employee #   : " + empNum);
+        System.out.println("Employee Information");
+        System.out.println("Employee #: " + empNum);
         System.out.println("Employee Name: " + fullName);
-        System.out.println("Birthday     : " + birthday);
-        System.out.println("========================================");
+        System.out.println("Birthday: " + birthday);
+        System.out.println();
 
         int[] months =    {6, 6, 7, 7, 8, 8, 9, 9, 10, 10, 11, 11, 12, 12};
         int[] startDays = {1, 16, 1, 16, 1, 16, 1, 16, 1, 16, 1, 16, 1, 16};
@@ -375,13 +390,10 @@ public class MyPH {
             double hours1 = computeCutoffHours(attendance, empNum, month, startDays[idx1], endDays[idx1]);
             double hours2 = computeCutoffHours(attendance, empNum, month, startDays[idx2], endDays[idx2]);
 
-
-
             double gross1 = hours1 * hourlyRate;
             double gross2 = hours2 * hourlyRate;
 
-            // Combine first and second cutoff gross salary first
-            // before computing monthly deductions.
+            // Combine first and second cutoff before deductions
             double monthlyGross = gross1 + gross2;
 
             double sss = computeSSS(monthlyGross);
@@ -390,10 +402,10 @@ public class MyPH {
             double tax = computeWithholdingTax(monthlyGross, sss, philhealth, pagibig);
             double totalDeductions = sss + philhealth + pagibig + tax;
 
-            // First cutoff has no deductions.
+            // First cutoff has no deductions
             double net1 = gross1;
 
-            // Second cutoff contains all deductions for the month.
+            // Second cutoff includes all deductions
             double net2 = gross2 - totalDeductions;
 
             printFirstCutoff(monthNames[month], startDays[idx1], endDays[idx1], hours1, gross1, net1);
@@ -403,12 +415,29 @@ public class MyPH {
     }
 
     // =========================================================
+    // LOAD CSV FILE
+    // =========================================================
+    public static boolean loadCSV(String fileName, ArrayList<String[]> targetList) {
+        try (BufferedReader br = new BufferedReader(new FileReader(fileName))) {
+            String line;
+
+            while ((line = br.readLine()) != null) {
+                if (targetList.isEmpty() && line.startsWith("\uFEFF")) {
+                    line = line.substring(1);
+                }
+                targetList.add(parseCSVLine(line));
+            }
+
+            return true;
+
+        } catch (Exception e) {
+            System.out.println("Error reading file: " + fileName);
+            return false;
+        }
+    }
+
+    // =========================================================
     // MAIN PROGRAM
-    // Handles:
-    // 1. loading CSV files
-    // 2. login validation
-    // 3. employee menu
-    // 4. payroll staff menu
     // =========================================================
     public static void main(String[] args) {
         Scanner sc = new Scanner(System.in);
@@ -416,35 +445,20 @@ public class MyPH {
         ArrayList<String[]> employees = new ArrayList<>();
         ArrayList<String[]> attendance = new ArrayList<>();
 
-        // Load employee data from CSV
-        try (BufferedReader br = new BufferedReader(new FileReader("EmployeeDetails.csv"))) {
-            String line;
-            while ((line = br.readLine()) != null) {
-                if (employees.isEmpty() && line.startsWith("\uFEFF")) {
-                    line = line.substring(1);
-                }
-                employees.add(parseCSVLine(line));
-            }
-        } catch (Exception e) {
-            System.out.println("Error reading employee file: " + e.getMessage());
-        }
+        // Load files first
+        boolean employeeLoaded = loadCSV(EMPLOYEE_FILE, employees);
+        boolean attendanceLoaded = loadCSV(ATTENDANCE_FILE, attendance);
 
-        // Load attendance data from CSV
-        try (BufferedReader br = new BufferedReader(new FileReader("Attendance.csv"))) {
-            String line;
-            while ((line = br.readLine()) != null) {
-                attendance.add(parseCSVLine(line));
-            }
-        } catch (Exception e) {
-            System.out.println("Error reading attendance file: " + e.getMessage());
+        if (!employeeLoaded || !attendanceLoaded) {
+            return;
         }
 
         // ---------------- LOGIN ----------------
         System.out.print("Enter username: ");
-        String username = sc.nextLine().trim();
+        String username = cleanField(sc.nextLine());
 
         System.out.print("Enter password: ");
-        String password = sc.nextLine().trim();
+        String password = cleanField(sc.nextLine());
 
         if (!password.equals("12345") ||
                 (!username.equals("employee") && !username.equals("payroll_staff"))) {
@@ -454,76 +468,77 @@ public class MyPH {
 
         // ---------------- EMPLOYEE MENU ----------------
         if (username.equals("employee")) {
-            System.out.println("\n--- Employee Menu ---");
             System.out.println("1. Enter your employee number");
             System.out.println("2. Exit the program");
             System.out.print("Choose an option: ");
 
-            int choice = sc.nextInt();
-            sc.nextLine();
+            int choice = safeParseInt(sc.nextLine());
 
             if (choice == 1) {
                 System.out.print("Enter your employee number: ");
-                String empNum = sc.nextLine().trim();
+                String empNum = cleanField(sc.nextLine());
 
                 String[] emp = findEmployee(employees, empNum);
 
                 if (emp == null) {
                     System.out.println("Employee number does not exist.");
-                } else {
-                    System.out.println("\nEmployee Number: " + cleanField(emp[0]));
-                    System.out.println("Employee Name  : " + cleanField(emp[2]) + " " + cleanField(emp[1]));
-                    System.out.println("Birthday       : " + cleanField(emp[3]));
+                    return;
                 }
-            } else {
-                System.out.println("Exiting program...");
+
+                System.out.println("Employee Number: " + cleanField(emp[0]));
+                System.out.println("Employee Name: " + cleanField(emp[2]) + " " + cleanField(emp[1]));
+                System.out.println("Birthday: " + cleanField(emp[3]));
             }
+
             return;
         }
 
         // ---------------- PAYROLL STAFF MENU ----------------
         if (username.equals("payroll_staff")) {
-            System.out.println("\n--- Payroll Staff Menu ---");
             System.out.println("1. Process Payroll");
             System.out.println("2. Exit the program");
             System.out.print("Choose an option: ");
 
-            int choice = sc.nextInt();
-            sc.nextLine();
+            int choice = safeParseInt(sc.nextLine());
 
-            if (choice == 2) {
-                System.out.println("Exiting program...");
+            if (choice != 1) {
                 return;
             }
 
             // ------------- PROCESS PAYROLL SUBMENU -------------
-            System.out.println("\n--- Process Payroll ---");
             System.out.println("1. One employee");
             System.out.println("2. All employees");
             System.out.println("3. Exit the program");
             System.out.print("Choose an option: ");
 
-            int subChoice = sc.nextInt();
-            sc.nextLine();
+            int subChoice = safeParseInt(sc.nextLine());
 
             if (subChoice == 1) {
                 System.out.print("Enter employee number: ");
-                String empNum = sc.nextLine().trim();
+                String empNum = cleanField(sc.nextLine());
 
                 String[] emp = findEmployee(employees, empNum);
 
                 if (emp == null) {
                     System.out.println("Employee number does not exist.");
-                } else {
-                    displayPayroll(emp, attendance);
+                    return;
                 }
-            } else if (subChoice == 2) {
-                for (int i = 1; i < employees.size(); i++) {
-                    displayPayroll(employees.get(i), attendance);
-                }
-            } else {
-                System.out.println("Exiting program...");
+
+                displayPayroll(emp, attendance);
+                return;
             }
+
+            if (subChoice == 2) {
+                for (int i = 1; i < employees.size(); i++) {
+                    String[] emp = employees.get(i);
+                    if (emp.length > 0) {
+                        displayPayroll(emp, attendance);
+                    }
+                }
+                return;
+            }
+
+            return;
         }
     }
 }
